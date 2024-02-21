@@ -1,0 +1,238 @@
+local identity = {}
+index = 1
+param = 1
+
+identity.splitt = function(str, ptr)
+    if not ptr then 
+        ptr = "%s"
+    end
+    local tbl = {}
+    for string in string.gmatch(str, ptr) do
+        table.insert(tbl, string) 
+    end
+    return tbl
+end
+
+identity.writeFile = function(text)
+    local file = io.open("information.txt","a")
+    file:write(text.."\n")
+    file:close()
+end
+
+identity.ready = function(id)
+    count = 0
+    for _,tile in pairs(getBot():getWorld():getTiles()) do
+        if tile.fg == id and tile:canHarvest() then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+identity.unready = function(id)
+    count = 0
+    for _,tile in pairs(getBot():getWorld():getTiles()) do
+        if tile.fg == id and not tile:canHarvest() then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+identity.fire = function()
+    local count = 0
+    for _, tile in pairs(getBot():getWorld():getTiles()) do
+        if tile:hasFlag(4096) then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+identity.initBot = function()
+    bot = getBot(getBots()[1].name)
+    if bot.status == BotStatus.online then
+        return "Online"
+    elseif bot.status == BotStatus.account_banned  then
+        return "Suspended"
+    elseif bot.status == BotStatus.error_connecting  then
+        return "Ercon"
+    elseif bot.status == BotStatus.maintenance then
+        return "Maintenance"
+    elseif bot.status == BotStatus.changing_subserver then
+        return "Changing Subserver"
+    else
+        return "Disconnect"
+    end
+end
+
+identity.scanTile = function(id)
+    local count = 0
+    for _, tile in pairs(getBot():getWorld():getTiles()) do
+        if tile.fg == id then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+identity.itemFloat = function(id)
+    return getBot():getWorld().growscan:getObjects()[id] or 0
+end
+
+identity.main = function()
+    for i = param, #setting.botList do
+        thread = identity.splitt(setting.botList[i],"([^|]+)")[1]
+        threading = identity.splitt(setting.botList[i],"([^|]+)")[2]
+        addBot(thread,threading)
+        sleep(setting.delay)
+        getBot(getBots()[1].name).selected = true
+        bot = getBot(getBots()[1].name)
+        if bot.status ~= BotStatus.online then
+            while bot.status ~= BotStatus.online do
+                bot:connect()
+                sleep(10000)
+                if bot.status == BotStatus.account_banned or bot.status == BotStatus.invalid_account or bot.status == BotStatus.advanced_account_protection then
+                    identity.writeFile("[ "..bot.name.." ] status : "..identity.initBot().."")
+                    sleep(1000)
+                    removeBot(bot.name)
+                    sleep(setting.delay)
+                    param = param + 1
+                    break
+                end
+            end
+        end
+        if bot.status == BotStatus.online then
+            identity.writeFile("[ "..bot.name.." ] status : "..identity.initBot()..", level : "..bot.level.."")
+            sleep(1000)
+            removeBot(bot.name)
+            sleep(setting.delay)
+            param = param + 1
+        end
+    end
+end
+
+identity.warp = function(world,door)
+    name = world
+    if door ~= "" then
+        name = name .. "|" ..door
+    end
+    if not getBot():isInWorld(world:upper()) then
+        addEvent(Event.variantlist, function(variant, netid)
+            if variant:get(0):getString() == "OnConsoleMessage" then
+                if variant:get(1):getString():lower():find("inaccessible.") or variant:get(1):getString():lower():find("unknown reason.") then
+                    nuked = true
+                end
+            end
+        end)
+        while not getBot():isInWorld(world:upper()) and not nuked do
+            if getBot():getPing() == 0 then
+                getBot():disconnect()
+                sleep(1000)
+            end
+            if getBot().status ~= BotStatus.online then
+                while getBot().status ~= BotStatus.online do
+                    getBot():connect()
+                    sleep(10000)
+                end
+            end
+            getBot():sendPacket(3,"action|join_request\nname|"..name.."\ninvitedWorld|0")
+            listenEvents(3)
+            sleep(6000)
+        end
+        removeEvents()
+        sleep(1000)
+    end
+    if getBot():isInWorld(world:upper()) then
+        if door ~= "" then
+            local stuck = 0
+            while getTile(getBot().x,getBot().y).fg == 6 and not wrong do
+                if getBot():getPing() == 0 then
+                    getBot():disconnect()
+                    sleep(1000)
+                end
+                if getBot().status ~= BotStatus.online then
+                    while getBot().status ~= BotStatus.online do
+                        getBot():connect()
+                        sleep(10000)
+                    end
+                end
+                getBot():sendPacket(3,"action|join_request\nname|"..name.."\ninvitedWorld|0")
+                sleep(6000)
+                stuck = stuck + 1
+                if stuck == 5 then
+                    wrong = true
+                end
+            end
+        end
+    end
+end
+
+identity.reconnect = function(world,id,x,y)
+    if getBot().status ~= BotStatus.online then
+        while getBot().status ~= BotStatus.online do
+            getBot():connect()
+            if getBot().status == BotStatus.account_banned then
+                getBot():stopScript()
+            end
+            sleep(10000)
+        end
+        while not getBot():isInWorld(world:upper()) do
+            getBot():sendPacket(3,"action|join_request\nname|"..world:upper().."\ninvitedWorld|0")
+            sleep(6000)
+        end
+        if id ~= "" then
+            while getTile(getBot().x,getBot().y).fg == 6 do
+                getBot():sendPacket(3,"action|join_request\nname|" ..world:upper().."|"..id:upper().."\ninvitedWorld|0")
+                sleep(6000)
+            end
+        end
+        if x and y then
+            while getBot().x ~= x or getBot().y ~= y do
+                getBot():findPath(x,y)
+                sleep(150)
+            end
+        end
+    end
+end
+
+
+identity.reseller = function(threads)
+    local file = io.open(threads,"a")
+    file:write("Reseller Dongo WKWK")
+    file:close()
+end
+
+if Information == "Script Checker made by Caramoy's Syndicate, Link Discord : https://discord.com/invite/fTTKW8vvuq" and Category == "Free Script (if u are buyers)" then
+    if setting.type == "farm" then
+        for i, worlds in ipairs(setting.farmlist.world) do
+            identity.warp(worlds,setting.farmlist.door)
+            sleep(250)
+            identity.reconnect(worlds,setting.farmlist.door)
+            sleep(250)
+            if not nuked then
+                if not wrong then
+                    identity.writeFile("World : "..worlds.."\nREADY : x"..identity.ready(setting.block + 1).."\nUNREADY : x"..identity.unready(setting.block + 1).."\nBLOCK : x"..identity.itemFloat(setting.block).."\nSEED : x"..identity.itemFloat(setting.block + 1).."\nFOSSIL : x"..identity.scanTile(3918).."\nFIRE : x"..identity.fire().."\nTOXIC : x"..identity.scanTile(778).."\nGEMS : x"..identity.itemFloat(112).."\n==================")
+                    sleep(1000)
+                else
+                    wrong = false
+                    identity.writeFile("World : "..worlds.."\nREADY : WRONG DOOR\nUNREADY : WRONG DOOR\nBLOCK : WRONG DOOR\nSEED : WRONG DOOR\nFOSSIL : WRONG DOOR\nFIRE : WRONG DOOR\nTOXIC : WRONG DOOR\nGEMS : WRONG DOOR\n==================")
+                    sleep(1000)
+                end
+            else
+                nuked = false
+                identity.writeFile("World : "..worlds.."\nREADY : NUKED\nUNREADY : NUKED\nBLOCK : NUKED\nSEED : NUKED\nFOSSIL : NUKED\nFIRE : NUKED\nTOXIC : NUKED\nGEMS : NUKED\n==================")
+                sleep(1000)
+            end
+        end
+        print("Already done recheking world, script terminated")
+        sleep(100)
+    elseif setting.type == "bot" then
+        identity.main()
+    end
+else
+    print("Reseller Dongo WKWK")
+    for i = 1, 50 do
+        identity.reseller("Reseller Script Cooking Idiot"..i)
+    end
+end
